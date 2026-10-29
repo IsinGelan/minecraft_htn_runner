@@ -1,0 +1,3 @@
+#! /bin/bash
+eval "$(fnm env)"
+node ./main.ts
