@@ -1,13 +1,16 @@
 
+import fs from "fs"
+
 import mf_pathfinder from "mineflayer-pathfinder"
 const { GoalFollow } = mf_pathfinder.goals
 
 // import type {Bot} from "mineflayer"
 import { ACTION_RECIPE } from "./crafting.ts"
-import { goto_item, look_at_found_block, look_at_found_entity, planner_name_to_id, short_name } from "./action_helpers.ts"
+import { closest_placing_positions, goto_item, look_at_found_block, look_at_found_entity, place_block_feedback, planner_name_to_id, short_name } from "./action_helpers.ts"
+import { plan_path } from "../constants.ts"
 import { CustomBot } from "./custom_bot.ts"
 import { SearchTask } from "../tasks/search_task.ts"
-import { distance2 } from "../helpers.js"
+import { distance2 } from "../helpers.ts"
 
 
 export function teleport(bot: CustomBot, pos: [number, number, number]){
@@ -28,7 +31,7 @@ export async function mine_block_directly(bot: CustomBot, btype: string, tool: s
     if (tool !== "i_air") {
         let tool_id = planner_name_to_id(tool)
         if (!bot.bot.inventory.items().find((item) => item.type === tool_id)) {
-            bot.bot.chat(`Tool not in possession: ${tool}`)
+            bot.bot.chat(`Tool not in inventory: ${tool}`)
             return
         }
         bot.bot.equip(tool_id, "hand")
@@ -40,11 +43,25 @@ export async function mine_block_directly(bot: CustomBot, btype: string, tool: s
 export function reap_block(bot: CustomBot, btype: string, tool: string, res_item: string){}
 
 // action place-block(btype: Block, item: Item)
-export function place_block(bot: CustomBot, btype: string, item: string){}
+export async function place_block(bot: CustomBot, btype: string, item: string){
+    bot.bot.chat(`Placing block ${btype} using item ${item}`)
+    let item_id = planner_name_to_id(item)
+    if (!bot.bot.inventory.items().find((item) => item.type === item_id)) {
+        bot.bot.chat(`Item to place down not in inventory: ${item}`)
+        return
+    }
+    await bot.bot.equip(item_id, "hand")
+    for (let [blockpos, visible_side] of closest_placing_positions(bot.bot)) {
+        console.log(`Trying to place block at ${blockpos} with visible side ${visible_side}`)
+        let success = await place_block_feedback(bot.bot, blockpos, visible_side)
+        if (success) return
+    }
+    bot.bot.chat(`No valid position found to place block ${btype}`)
+}
 
 // action find-block-in-dim(btype: Block, dim: Dim)
 export async function find_block_in_dim(bot: CustomBot, btype: string, dim: string){
-    let search_task = new SearchTask(bot.bot, bot.task_handler, bot.travel_planner, btype, true)
+    let search_task = new SearchTask(bot.bot, bot.task_handler, bot.travel_planner, btype, false)
     bot.task_handler.add_task("search_task", search_task)
     await search_task.run()
 }
@@ -63,8 +80,9 @@ export function container_take(bot: CustomBot, ctype: string, item: string){}
 // action kill-entity-directly(entity: Entity)
 export async function kill_entity_directly(bot: CustomBot, entity: string){
     let en = look_at_found_entity(bot.bot, entity)
+    if (en === null) return;
     bot.bot.pathfinder.setGoal(new GoalFollow(en, 1.5), true)
-    while (en !== null) {
+    while (en.isValid) {
         // Do until dead
         await bot.bot.waitForTicks(10)
         if (distance2(
@@ -145,6 +163,7 @@ export async function recipe(bot: CustomBot, recipe_name: string, items: string[
         bot.bot.chat(`Recipe not implemented by mineflayer: ${recipe_name}`)
         return
     }
+    bot.bot.chat(`Crafting recipe ${recipe_name} requires: ${rec.requiresTable ? "crafting table" : "no crafting table"}`)
     if (rec.requiresTable) {
         let crafting_table = look_at_found_block(bot, "b_crafting_table")
         bot.bot.craft(rec as any, 1, crafting_table)
@@ -187,7 +206,7 @@ export async function run_task_call(bot: CustomBot, task_call: TaskCall){
             reap_block(bot, task_call.args[0], task_call.args[1], task_call.args[2]);
             break;
         case "place-block":
-            place_block(bot, task_call.args[0], task_call.args[1]);
+            await place_block(bot, task_call.args[0], task_call.args[1]);
             break;
         case "find-block-in-dim":
             await find_block_in_dim(bot, task_call.args[0], task_call.args[1]);
@@ -239,5 +258,20 @@ export async function run_task_call(bot: CustomBot, task_call: TaskCall){
             }
             await recipe(bot, task_call.task_name, task_call.args);
             break;
+    }
+}
+
+const plan_header_pattern = /^#[ ]*([\w\d_-]+)[ ]*:[ ]*(.*)$/
+
+export function import_plan(): {name: string; goal: string; calls: TaskCall[]} {
+    let res = fs.readFileSync(plan_path, "utf-8").split("\n")
+    let firstline = res[0]
+    let match = firstline.match(plan_header_pattern)
+    if (!match) {throw new Error("Invalid plan header")}
+    let [_, plan_name, call] = match
+    return {
+        name: plan_name,
+        goal: call,
+        calls: res.slice(1).filter((line) => line.trim() !== "").map((line) => TaskCall.from_string(line))
     }
 }

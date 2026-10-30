@@ -2,7 +2,7 @@
 import type { Bot } from "mineflayer"
 import { TaskHandler } from "../tasks/task_handler.ts"
 import { TravelPlanner } from "../tasks/travel_planner.ts";
-import { run_task_call, TaskCall } from "./actions.ts";
+import { import_plan, run_task_call, TaskCall } from "./actions.ts";
 import { split_once } from "../helpers.ts";
 
 export class CustomBot {
@@ -14,7 +14,7 @@ export class CustomBot {
     constructor(b: Bot, th: TaskHandler) {
         this.bot = b;
         this.task_handler = th;
-        this.travel_planner = new TravelPlanner(b, th, true)
+        this.travel_planner = new TravelPlanner(b, th, false)
         this.task_handler.add_task("travel_planner", this.travel_planner)
 
         this.set_extra_listeners()
@@ -32,13 +32,20 @@ export class CustomBot {
                 await run_task_call(this, task_call);
                 this.bot.chat(`Task ${task_call.to_string()} finished!`)
             }
+
+            if (message.startsWith("run plan")) {
+                let {name, goal, calls} = import_plan()
+                this.bot.chat(`>> Running plan '${name}'(${calls.length} a) with goal ${goal}`)
+                await this.run_plan(calls)
+                this.bot.chat(`|| Plan finished!`)
+            }
         })
     }
 
-    run_plan(plan: TaskCall[]) {
+    async run_plan(plan: TaskCall[]) {
         for (const taskcall of plan) {
             this.bot.chat(`Executing task: ${taskcall.to_string()}`)
-            run_task_call(this, taskcall);
+            await run_task_call(this, taskcall);
         }
     }
 

@@ -1,6 +1,7 @@
 
 export const version = "1.16.5"
 
+export const config_path = "config.json"
 export const master_player_name = "Herr_Fifian"
 
 export const version_ymax = 255
@@ -22,3 +23,5 @@ export const half_score_distance = 200 // the distance at which a chunk right ne
 export const wander_distance = 100 // how far the bot wanders before recalling the path planner for a new goal
 export const prob_lower_threshold = 0.1 // the probability threshold below which a chunk is considered unpromising
 export const look_for_block_distance = 16 // how far the bot looks for a block in the locate_in_chunk phase
+
+export const plan_path = "plan.txt"

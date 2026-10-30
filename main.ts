@@ -1,10 +1,4 @@
 
-
-const loopback = "127.0.0.1"
-const server_host = loopback //"16.170.206.195" // ENTER ON STARTUP
-const local_port = "38565" // ENTER ON STARTUP
-const bot_name = "EgonOlsen"
-
 import vec3 from "vec3"
 import { unloaded_biome_name, version, master_player_name } from "./constants.ts"
 
@@ -19,7 +13,7 @@ import mcd from "minecraft-data"
 const mcData = mcd(version)
 const { Recipe } = prismarineRecipe(mcData)
 
-import { highest_collidable_blockpos, biome_display_name, chunk_biome, biome_name } from "./helpers.ts"
+import { highest_collidable_blockpos, biome_display_name, chunk_biome, biome_name, read_config } from "./helpers.ts"
 import { chunk_likelihoods } from "./extra/block_stats.ts"
 import { TaskHandler } from "./tasks/task_handler.ts"
 import { ChunkStatisticTask } from "./tasks/statistic_task.ts"
@@ -29,26 +23,31 @@ import { cheat_give, id_to_planner_name, look_at_found_block, planner_name_to_id
 import { ACTION_RECIPE, recipe_ingredients } from "./runner/crafting.ts"
 import { CustomBot } from "./runner/custom_bot.ts"
 
+
+// ===============================
+const { host, port, bot_name } = read_config() 
+console.log(`Connecting to ${host}:${port} as ${bot_name}...`)
+
 const connection_bot = {
     "host": "localhost",
-    "port": local_port,
+    "port": port,
     "username": bot_name,
     "version": version,
     "viewDistance": "tiny"
 }
 
 const connection_account = {
-    "host": server_host,
+    "host": host,
     "port": "25565",
     "version": version,
     "ign": 0,
-    "username": "Herr_Fifian",
+    "username": "...",
     "auth": "microsoft"
 }
 
 
 // ===============================
-const bo: Bot = mineflayer.createBot(connection_bot)
+const bo: Bot = mineflayer.createBot(connection_bot as any)
 bo.loadPlugin(pathfinder)
 
 const task_handler = new TaskHandler()

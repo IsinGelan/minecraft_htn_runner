@@ -1,12 +1,13 @@
 
-import type { Vec3 } from "vec3"
+import { Vec3 } from "vec3"
 import vec3 from "vec3"
-import {unloaded_biome_id, unloaded_biome_name, version, version_sealevel, version_ymax, version_ymin} from "./constants.ts"
+import fs from "fs"
 
 import type { Bot } from "mineflayer";
-
 import mcd from "minecraft-data"
 const mcData = mcd(version)
+
+import {config_path, unloaded_biome_id, unloaded_biome_name, version, version_sealevel, version_ymax, version_ymin} from "./constants.ts"
 
 // ===============================
 export function argmin<T>(arr: T[], score: (item: T) => number): T | undefined {
@@ -123,4 +124,104 @@ export function chunk_biome(bot: Bot, chunk_pos: [number, number]): number {
 export function block_id(bot: Bot, block_name: string): number {
     const block = bot.registry.blocksByName[block_name]!
     return block.id
+}
+
+// ===============================
+export function inverse_cantor(z: number): [number, number] {
+    let w = Math.floor((Math.sqrt(8 * z + 1) - 1) / 2)
+    let t = (w * (w + 1)) / 2
+    let y = z - t
+    let x = w - y
+    return [x, y]
+}
+
+function ring_inverse_cantor(z: number): [number, number] {
+    if (z === 0) return [0, 0]
+    let quarter = (z - 1) % 4
+    let [qx, qy] = inverse_cantor(Math.floor((z - 1) / 4))
+    switch (quarter) {
+        case 0: return [qx, qy + 1]
+        case 1: return [qx - 1, qy]
+        case 2: return [qx, qy - 1]
+        case 3: return [qx + 1, qy]
+    }
+}
+
+function ring(z: number, r: number): [number, number] {
+    if (r === 0) return [0, 0]
+    let quarter = Math.floor(z / (r * 4))
+    let qx = z - quarter * r
+    let qy = r - qx
+    switch (quarter) {
+        case 0: return [qx, qy]
+        case 1: return [-qy, qx]
+        case 2: return [-qx, -qy]
+        case 3: return [qy, -qx]
+    }
+}
+
+export function* closest_positions(reference: [number, number, number]) {
+    let [x0, y0, z0] = reference
+    // yield [x0, y0, z0]
+    // yield [x0, y0 + 1, z0]
+    for (let shell = 1; shell < 100; shell++) {
+        let levels = shell * 2 + 1
+        for (let level = 0; level < levels; level++) {
+            let y = y0 + level - shell
+            let r = shell - Math.abs(level - shell)
+            for (let z = 0; z < r * 4; z++) {
+                let [dx, dz] = ring(z, r)
+                yield [x0 + dx, y, z0 + dz]
+            }
+        }
+    }
+}
+
+// export function block_in_front(bot: Bot, reference: Vec3): Vec3 {
+//     // returns block position in front of reference from the bot's position
+//     let bot_pos = bot.entity.position
+//     let direction = reference.minus(bot_pos).normalize()
+//     let block_pos = bot_pos.plus(direction)
+//     return vec3(Math.floor(block_pos.x), Math.floor(block_pos.y), Math.floor(block_pos.z))
+// }
+
+export const directions: { [key: string]: Vec3 } = {
+    top: new Vec3(0, 1, 0),
+    bottom: new Vec3(0, -1, 0),
+    north: new Vec3(0, 0, -1),
+    south: new Vec3(0, 0, 1),
+    east: new Vec3(1, 0, 0),
+    west: new Vec3(-1, 0, 0),
+}
+
+export function block_faces_towards_bot(bot, block) {
+    // faces of the block that are facing the bot
+    const playerPos = bot.entity.position;
+    const blockPos = block.position.offset(0.5, 0.5, 0.5);
+
+    const dx = playerPos.x - blockPos.x;
+    const dy = playerPos.y - blockPos.y;
+    const dz = playerPos.z - blockPos.z;
+
+    const faces = [];
+
+    if (dx > 0) faces.push(directions.east);  // East
+    if (dx < 0) faces.push(directions.west); // West
+
+    if (dy > 0) faces.push(directions.top);  // Top
+    if (dy < 0) faces.push(directions.bottom); // Bottom
+
+    if (dz > 0) faces.push(directions.south);  // South
+    if (dz < 0) faces.push(directions.north); // North
+
+    return faces;
+}
+// ===============================
+export function read_config(): {host: string, port: number, bot_name: string} {
+    if (!fs.existsSync(config_path)) {
+        throw new Error(`Config file not found: ${config_path}`)
+    }
+    const config_data = fs.readFileSync(config_path, "utf-8")
+    const config = JSON.parse(config_data)
+    return config
 }
