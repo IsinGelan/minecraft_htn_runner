@@ -1,9 +1,10 @@
 
 import type { Bot } from "mineflayer"
+import type { CustomBot } from "../runner/custom_bot.ts"
 
 
 export class Task {
-    protected bot: Bot
+    protected bot: CustomBot
     protected handler: TaskHandler
     private recurrent_interval: number
     private name: string
@@ -14,7 +15,7 @@ export class Task {
     async recurrent () {}
     async stop () {}
 
-    constructor(bot: Bot, handler: TaskHandler, info: boolean = false) {
+    constructor(bot: CustomBot, handler: TaskHandler, info: boolean = false) {
         this.bot = bot
         this.handler = handler
         this.recurrent_interval = 0
@@ -47,7 +48,7 @@ export class Task {
         if(!this.chat_info) return;
         let lines = text.split("\n")
         lines.forEach((line) => {
-            this.bot.chat(line)
+            this.bot.bot.chat(line)
         })
     }
 }
@@ -58,7 +59,7 @@ export class FinishableTask extends Task {
     private resolveFinished!: () => void;
     private finishedPromise: Promise<void>;
 
-    constructor(bot: Bot, handler: TaskHandler, info: boolean = false) {
+    constructor(bot: CustomBot, handler: TaskHandler, info: boolean = false) {
         super(bot, handler, info)
         this.finishedPromise = new Promise<void>((resolve) => {
             this.resolveFinished = resolve;
@@ -68,7 +69,7 @@ export class FinishableTask extends Task {
     protected async finish() {
         this.finished = true
         this.resolveFinished();
-        await this.stop()
+        await this.handler.stop_task(this.get_name())
     }
     async run() {
         await this.finishedPromise;

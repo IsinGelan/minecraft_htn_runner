@@ -165,7 +165,7 @@ export async function recipe(bot: CustomBot, recipe_name: string, items: string[
     }
     bot.bot.chat(`Crafting recipe ${recipe_name} requires: ${rec.requiresTable ? "crafting table" : "no crafting table"}`)
     if (rec.requiresTable) {
-        let crafting_table = look_at_found_block(bot, "b_crafting_table")
+        let crafting_table = look_at_found_block(bot.bot, "b_crafting_table")
         bot.bot.craft(rec as any, 1, crafting_table)
     } else {
         bot.bot.craft(rec as any, 1, null)

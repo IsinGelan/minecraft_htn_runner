@@ -8,19 +8,23 @@ import { split_once } from "../helpers.ts";
 export class CustomBot {
     bot: Bot;
     task_handler: TaskHandler;
-    travel_planner: TravelPlanner;
+    travel_planner: TravelPlanner | null = null; // only null before bot is spawned
     memorized_structures: Map<string, [number, number, number]>;
 
-    constructor(b: Bot, th: TaskHandler) {
+    constructor(b: Bot) {
         this.bot = b;
-        this.task_handler = th;
-        this.travel_planner = new TravelPlanner(b, th, false)
-        this.task_handler.add_task("travel_planner", this.travel_planner)
+        this.task_handler = new TaskHandler();
 
         this.set_extra_listeners()
     }
 
+    on_spawn() {
+        this.travel_planner = new TravelPlanner(this, this.task_handler, false)
+        this.task_handler.add_task("travel_planner", this.travel_planner)
+    }
+
     set_extra_listeners() {
+        this.bot.on("spawn", () => {this.on_spawn()})
         this.bot.on("chat", async (username: string, message: string) => {
             if (username === this.bot.username) return
             console.log(`Chat message from ${username}: ${message}`)
@@ -54,13 +58,28 @@ export class CustomBot {
         this.memorized_structures.set(name, pos)
         this.bot.chat(`Structure ${name} memorized at position ${pos}`)
     }
-
+    
     get_memorized_structure(name: string): [number, number, number] | null {
         if (!this.memorized_structures.has(name)) {
             this.bot.chat(`Structure ${name} not memorized`)
             return null
         }
         return this.memorized_structures.get(name)!
+    }
+
+    // extra -----------------
+    in_deep_water(): boolean {
+        let feetpos = this.bot.entity.position
+        let feetblock = this.bot.blockAt(feetpos)
+        if (feetblock == null) return false
+        if (feetblock.name != "water") return false
+
+        let belowpos = feetpos.offset(0, -1, 0)
+        let headpos = feetpos.offset(0, 1, 0)
+        let belowblock = this.bot.blockAt(belowpos)
+        let headblock = this.bot.blockAt(headpos)
+        if (belowblock?.name == "water" || headblock?.name == "water") return true;
+        return false;
     }
 }
     

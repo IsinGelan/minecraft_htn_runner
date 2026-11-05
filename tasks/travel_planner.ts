@@ -8,12 +8,14 @@ import { distance2, vec3_to_xz } from "../helpers.ts"
 import { replan_distance, section_length, reached_distance } from "../constants.ts"
 import { Task } from "./task_handler.ts"
 import type { TaskHandler } from "./task_handler.ts"
+import type { CustomBot } from "../runner/custom_bot.ts"
 
 type UpdateAction = "init" | "keep_going" | "new_goal" | "new_section_goal" | "recompute_section_goal" | "done"
 
 
+
 export class TravelPlanner extends Task {
-    public bot: Bot
+    public bot: CustomBot
 
     private current_section_goal: [number, number] | null
     private current_goal: [number, number] | null
@@ -21,8 +23,13 @@ export class TravelPlanner extends Task {
     private goal_reached_callback: (() => void) | null
 
     private previous_action: UpdateAction
+    private previous_position: [number, number] | null // null only when bot not spawned yet
+
+    public settings: {
+        swim: boolean,
+    }
     
-    constructor(bot: Bot, handler: TaskHandler, info: boolean = false) {
+    constructor(bot: CustomBot, handler: TaskHandler, info: boolean = false) {
         super(bot, handler, info)
         this.bot = bot
 
@@ -32,6 +39,7 @@ export class TravelPlanner extends Task {
         this.goal_reached_callback = null
 
         this.previous_action = "init"
+        this.previous_position = vec3_to_xz(this.bot.bot.entity.position)
         this.chat_info = false
     }
 
@@ -44,12 +52,7 @@ export class TravelPlanner extends Task {
         if (action == "keep_going") {
             this.print_info()
         }
-        else if (action == "done" && this.previous_action != "done") {
-            // the moment the goal was reached
-            // console.log("goal reached!")
-            // this.goal_reached_callback?.()
-            // this.clear_goal_reached_callback()
-        }
+        // else if (action == "done" && this.previous_action != "done") 
         else if (action == "done") {}
         else if (action == "new_goal") {
             this.log("I need to calculate a new goal!")
@@ -61,7 +64,16 @@ export class TravelPlanner extends Task {
             this.new_section_goal()
         }
 
+        if (this.current_goal && action == "keep_going") {
+            this.do_not_get_stuck()
+        }
+
+        if (this.bot.in_deep_water()) {
+            this.bot.bot.chat("I am in deep water! Help!")
+        }
+        
         this.previous_action = action
+        this.previous_position = vec3_to_xz(this.bot.bot.entity.position)
     }
     
     // ---------------------------
@@ -71,7 +83,7 @@ export class TravelPlanner extends Task {
             return this.next_goal_callback ? "new_goal" : "done"
         }
 
-        let bpos_2d = vec3_to_xz(this.bot.entity.position)
+        let bpos_2d = vec3_to_xz(this.bot.bot.entity.position)
         let goal_dist = distance2(bpos_2d, this.current_goal)
         if (goal_dist <= reached_distance) {
             this.reach_goal()
@@ -103,7 +115,7 @@ export class TravelPlanner extends Task {
             console.error("I got no goal!")
             return;
         };
-        let bpos_2d = vec3_to_xz(this.bot.entity.position)
+        let bpos_2d = vec3_to_xz(this.bot.bot.entity.position)
         let rel_goal_vec: [number, number] = [this.current_goal[0] - bpos_2d[0], this.current_goal[1] - bpos_2d[1]]
         let rel_goal_dist = distance2([0, 0], rel_goal_vec)
         if (rel_goal_dist < section_length) {
@@ -118,7 +130,7 @@ export class TravelPlanner extends Task {
     }
     private set_section_goal(section_goal: [number, number]) {
         this.current_section_goal = section_goal
-        this.bot.pathfinder.setGoal(new GoalNearXZ(section_goal[0], section_goal[1], reached_distance - 1))
+        this.bot.bot.pathfinder.setGoal(new GoalNearXZ(section_goal[0], section_goal[1], reached_distance - 1))
     }
 
 
@@ -131,10 +143,22 @@ export class TravelPlanner extends Task {
 
     print_info() {
         if (!this.info) return;
-        let pos = this.bot.entity.position
+        let pos = this.bot.bot.entity.position
         let dist = distance2([pos.x, pos.z], this.current_section_goal!)
         this.log(`I am ${dist.toFixed(2)} from my section goal!`)
     }
+    
+    // Additional movement -------
+    do_not_get_stuck() {
+        let stuck = distance2(vec3_to_xz(this.bot.bot.entity.position), this.previous_position) < 0.1
+        if (!stuck) return;
+        this.bot.bot.chat("I am stuck! Resetting my section goal!")
+
+        let section_goal = this.get_current_section_goal()
+        this.bot.bot.pathfinder.setGoal(null)
+        this.set_section_goal(section_goal!)
+    }
+
 
     // Public area ---------------
     get_current_goal() {return this.current_goal}
@@ -142,7 +166,7 @@ export class TravelPlanner extends Task {
 
     get_dist_to_goal(): number | null{
         if (!this.current_goal) return null;
-        let pos = this.bot.entity.position
+        let pos = this.bot.bot.entity.position
         return distance2([pos.x, pos.z], this.current_goal)
     }
 
@@ -159,6 +183,7 @@ export class TravelPlanner extends Task {
         console.log(`  action:        ${action}`)
     }
     set_path_routine(next_goal_callback: () => [number, number]) {
+        // governing where to go after the section goal is reached.
         this.clear_goal()
         this.next_goal_callback = next_goal_callback
         this.current_goal = this.next_goal_callback()
@@ -177,6 +202,6 @@ export class TravelPlanner extends Task {
         this.current_goal = null
         this.current_section_goal = null
         this.next_goal_callback = null
-        this.bot.pathfinder.setGoal(null)
+        this.bot.bot.pathfinder.setGoal(null)
     }
 }

@@ -19,7 +19,7 @@ import { TaskHandler } from "./tasks/task_handler.ts"
 import { ChunkStatisticTask } from "./tasks/statistic_task.ts"
 import { SearchTask } from "./tasks/search_task.ts"
 import { TpTask } from "./tasks/tp_task.ts"
-import { cheat_give, id_to_planner_name, look_at_found_block, planner_name_to_id } from "./runner/action_helpers.ts"
+import { cheat_give, id_to_planner_name, look_at_found_block, planner_name_to_id, short_name } from "./runner/action_helpers.ts"
 import { ACTION_RECIPE, recipe_ingredients } from "./runner/crafting.ts"
 import { CustomBot } from "./runner/custom_bot.ts"
 
@@ -50,8 +50,8 @@ const connection_account = {
 const bo: Bot = mineflayer.createBot(connection_bot as any)
 bo.loadPlugin(pathfinder)
 
-const task_handler = new TaskHandler()
-const bot = new CustomBot(bo, task_handler)
+const bot = new CustomBot(bo)
+let task_handler = bot.task_handler
 // ===============================
 
 async function exit() {
@@ -139,12 +139,12 @@ bo.on("chat", async (username: string, message: string) => {
         console.log("Starting chunk statistic task")
         bo.chat("Starting chunk statistic task")
         task_handler.add_task("tp_task", new TpTask(bo, task_handler))
-        task_handler.add_task("chunk_stat_task", new ChunkStatisticTask(bo, task_handler))
+        task_handler.add_task("chunk_stat_task", new ChunkStatisticTask(bot, task_handler))
     }
     if (message === "start stat") {
         console.log("Starting chunk statistic task (no teleportation)")
         bo.chat("Starting chunk statistic task (no teleportation)")
-        task_handler.add_task("chunk_stat_task", new ChunkStatisticTask(bo, task_handler))
+        task_handler.add_task("chunk_stat_task", new ChunkStatisticTask(bot, task_handler))
     }
     if (message === "stop stat") {
         console.log("Stopping chunk statistic task")
@@ -159,11 +159,12 @@ bo.on("chat", async (username: string, message: string) => {
             bo.chat("Please specify a block type, e.g. 'start search oak_log'")
             return
         }
-        if (!bo.registry.blocksByName[block_type]) {
+        let short_blockname = short_name(block_type)
+        if (!bo.registry.blocksByName[short_blockname]) {
             bo.chat("Unknown block type: " + block_type)
             return
         }
-        task_handler.add_task("search_task", new SearchTask(bo, task_handler, bot.travel_planner, block_type, true))
+        task_handler.add_task("search_task", new SearchTask(bot, task_handler, bot.travel_planner, block_type, true))
     }
 
     if (message === "stop search") {
@@ -172,34 +173,15 @@ bo.on("chat", async (username: string, message: string) => {
         task_handler.stop_task("search_task")
     }
 
-    if (message === "tp master") {
-        const master_player = bo.players[master_player_name]
-        if (!master_player) {
-            bo.chat(`My master (${master_player_name}) is not here :(`)
-            return
-        }
-        bo.chat(`/tp ${master_player_name}`)
+
+    if (message === "eat") {
+        // Implementation for eating
+        bo.consume()
     }
 
-    if (message === "craft") {
-        cheat_give(bo, "i_iron_ingot", 3)
-        cheat_give(bo, "i_stick", 2)
-
-        let crafting_table = look_at_found_block(bo, "b_crafting_table")
-        
-        let id = planner_name_to_id("i_iron_pickaxe")
-        // let recipes = bot.recipesFor(id, null, null, crafting_table)
-        let recipes = Recipe.find(planner_name_to_id("i_iron_pickaxe"), null)
-        let recipe = recipes[0]
-        console.log(`Found recipe for iron pickaxe: ${id_to_planner_name.get(recipe.result.id)}`)
-        console.log(recipe_ingredients(recipe))
-
-        let recipe2 = ACTION_RECIPE.get("recipe_iron_pickaxe")
-        console.log("Recipe", recipe2)
-
-        // console.log(`Found ${recipes} for iron pickaxe`)
-        await bo.craft(recipe2, 1, crafting_table)
-        bo.toss(id, null, 1);
+    if (message === "howdy") {
+        let stats = [bo.health, bo.food, bo.foodSaturation, bo.oxygenLevel].map(x => Math.floor(x))
+        bo.chat(`HP: ${stats[0]}, F: ${stats[1]}, S: ${stats[2]}, O2: ${stats[3]}`)
     }
 
     if (message === "leave") {
@@ -207,6 +189,7 @@ bo.on("chat", async (username: string, message: string) => {
         exit()
     }
 })
+
 
 bo.on("end", async () => {
     console.log("Bot disconnected from server")
